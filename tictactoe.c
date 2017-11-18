@@ -2,9 +2,11 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define BOARD_SIZE 3
+#define N_COLS 3
+#define N_ROWS N_COLS
+#define BOARD_SIZE N_ROWS*N_COLS
 #define ACTION_SIZE 3		/* Includes null terminator. */
-#define N_ACTIONS BOARD_SIZE*BOARD_SIZE + 1 /* All moves and user commands. */
+#define N_ACTIONS BOARD_SIZE + 1 /* All moves and user commands. */
 #define LINE_BUFFER_SIZE 80
 #define INVALID_ACTION {INVALID, "", 0}
 
@@ -43,6 +45,7 @@ static const action_map ACTIONS[] = {
   INVALID_ACTION		/* Guard end of array with invalid action. */
 };
 
+
 typedef enum player {PLAYER_EX, PLAYER_OH} player;
 
 
@@ -50,14 +53,15 @@ typedef enum player {PLAYER_EX, PLAYER_OH} player;
  ** Forward Declarations
  ****************************************************************/
   
-void print_board(board_mark board[BOARD_SIZE][BOARD_SIZE]);
-void print_board_row(board_mark board[BOARD_SIZE][BOARD_SIZE], int row);
-void apply_action(board_mark board[BOARD_SIZE][BOARD_SIZE], action_map action, player active_player);
+void run_game();
+void print_board(board_mark board[BOARD_SIZE]);
+void print_board_row(board_mark board[BOARD_SIZE], int row);
+void apply_action(board_mark board[BOARD_SIZE], action_map action, player active_player);
 board_mark mark_from_player(player p);
 player change_players(player old_player);
 action_map get_action();
 action_map action_from_str(const char action_str[]);
-bool is_valid_action(char* action);
+bool is_valid_action(board_mark board[BOARD_SIZE], action_map action, char reason[]);
 void get_user_line(char response[], int response_size);
 
 
@@ -66,7 +70,14 @@ void get_user_line(char response[], int response_size);
  ****************************************************************/
 
 int main(int argc, char** argv) {
-  static board_mark board[BOARD_SIZE][BOARD_SIZE] = {EMPTY};
+  run_game();
+  return 0;
+}
+
+
+void run_game() {
+  static board_mark board[BOARD_SIZE] = {EMPTY};
+  static char reason[256];
 
   printf(WELCOME_MESSAGE);
   player active_player = PLAYER_OH;
@@ -76,28 +87,33 @@ int main(int argc, char** argv) {
   
     printf(ACTION_PROMPT);
     action_map action = get_action();
-    printf("Your action is [%s]\n", action.label);
+    printf("DEBUG: Your action is [%s]\n", action.label);
 
     if (action.type == COMMAND_QUIT) break;
 
-    apply_action(board, action, active_player);
-    active_player = change_players(active_player);
+    bool valid_action = is_valid_action(board, action, reason);
+
+    if (valid_action) {
+      apply_action(board, action, active_player);
+
+      active_player = change_players(active_player);
+    } else {
+      printf(reason);
+    }
   }
 
   printf("\nThanks for playing!\n");
-  
-  return 0;
 }
 
 
-void print_board(board_mark board[BOARD_SIZE][BOARD_SIZE]) {
+void print_board(board_mark board[BOARD_SIZE]) {
   static char board_top[] = " 1 2 3";
   static char board_middle[] = " -+-+-";
 
   printf("%s\n", board_top);
 
   int i;
-  for(i = 0; i < BOARD_SIZE-1; ++i) {
+  for(i = 0; i < N_ROWS-1; ++i) {
     print_board_row(board, i);
     printf("%s\n", board_middle);
   }
@@ -105,13 +121,13 @@ void print_board(board_mark board[BOARD_SIZE][BOARD_SIZE]) {
 }
 
 
-void print_board_row(board_mark board[BOARD_SIZE][BOARD_SIZE], int row) {
+
+void print_board_row(board_mark board[BOARD_SIZE], int row) {
   static char board_row_markers[] = "abc";
   printf("%c", board_row_markers[row]);
-  printf("%c|%c|%c\n",
-	 BOARD_SYMBOLS[board[row][0]],
-	 BOARD_SYMBOLS[board[row][1]],
-	 BOARD_SYMBOLS[board[row][2]]);
+  printf("%c|", BOARD_SYMBOLS[board[row*N_COLS + 0]]);
+  printf("%c|", BOARD_SYMBOLS[board[row*N_COLS + 1]]);
+  printf("%c\n", BOARD_SYMBOLS[board[row*N_COLS + 2]]);
 }
 
 
@@ -136,15 +152,9 @@ action_map get_action() {
 }
 
 
-void apply_action(board_mark board[BOARD_SIZE][BOARD_SIZE], action_map action, player active_player) {
-  int row = action.index / BOARD_SIZE;
-  int col = action.index % BOARD_SIZE;
-
-  printf("DEBUG action.index [%d], row [%d], col [%d]\n",
-	 action.index, row, col);
-
+void apply_action(board_mark board[BOARD_SIZE], action_map action, player active_player) {
   board_mark mark = mark_from_player(active_player);
-  board[row][col] = mark;
+  board[action.index] = mark;
 }
 
 
@@ -210,4 +220,18 @@ action_map action_from_str(const char action_str[]) {
   }
 
   return *action;
+}
+
+
+bool is_valid_action(board_mark board[BOARD_SIZE], action_map action, char reason[]) {
+  static char reason_already_marked[] =
+    "Square %s already has a mark. Please try again.\n";
+  
+  /* Cannot place mark over existing mark. */
+  if (board[action.index] != EMPTY) {
+    sprintf(reason, reason_already_marked, action.label);
+    return false;
+  }
+
+  return true;
 }
