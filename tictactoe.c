@@ -49,6 +49,9 @@ static const action_map ACTIONS[] = {
 typedef enum player {PLAYER_EX, PLAYER_OH} player;
 
 
+typedef enum game_status {PLAYING, TIE, WIN} game_status;
+
+
 /**************************************************************** 
  ** Forward Declarations
  ****************************************************************/
@@ -57,6 +60,8 @@ void run_game();
 void print_board(board_mark board[BOARD_SIZE]);
 void print_board_row(board_mark board[BOARD_SIZE], int row);
 void apply_action(board_mark board[BOARD_SIZE], action_map action, player active_player);
+game_status check_game_status(board_mark board[BOARD_SIZE]);
+void print_winning_player_message(player active_player);
 board_mark mark_from_player(player p);
 player change_players(player old_player);
 action_map get_action();
@@ -78,6 +83,7 @@ int main(int argc, char** argv) {
 void run_game() {
   static board_mark board[BOARD_SIZE] = {EMPTY};
   static char reason[256];
+  static game_status status = PLAYING;
 
   printf(WELCOME_MESSAGE);
   player active_player = PLAYER_OH;
@@ -95,14 +101,34 @@ void run_game() {
 
     if (valid_action) {
       apply_action(board, action, active_player);
+      status = check_game_status(board);
 
-      active_player = change_players(active_player);
+      if (status == PLAYING) {
+	active_player = change_players(active_player);
+      } else {
+	/* If not playing then end game. */
+	break;
+      }
     } else {
       printf(reason);
     }
   }
 
-  printf("\nThanks for playing!\n");
+  print_board(board);
+
+  
+  /* If the game was not terminated by quit, show the result. */
+  switch (status)  {
+  case PLAYING:
+    printf("\nThanks for playing!\n");
+    break;
+  case TIE:
+    printf("\nThe game was a tie.\n");
+    break;
+  case WIN:
+    print_winning_player_message(active_player);
+    break;
+  };    
 }
 
 
@@ -155,6 +181,129 @@ action_map get_action() {
 void apply_action(board_mark board[BOARD_SIZE], action_map action, player active_player) {
   board_mark mark = mark_from_player(active_player);
   board[action.index] = mark;
+}
+
+
+game_status check_game_status(board_mark board[BOARD_SIZE]) {
+  static int oh = 0;
+  static int ex = 1;
+  static int a1_diag = 0;
+  static int anti_diag = 1;
+  bool rows_all[2][N_ROWS] = {
+    {true, true, true},
+    {true, true, true}
+  };
+  bool cols_all[2][N_COLS] = {
+    {true, true, true},
+    {true, true, true}
+  };
+  bool diags_all[2][2] = {
+    {true, true},
+    {true, true}
+  };
+  bool any_empty = false;
+
+  /* Check each cell and update states. */
+  for (int i = 0; i < BOARD_SIZE; ++i) {
+    int row = i / N_COLS;
+    int col = i % N_ROWS;
+    bool in_a1_diag = row == col;
+    bool in_anti_diag = row + col == N_ROWS - 1;
+    
+    /* Check rows and columns. */
+    switch (board[i]) {
+    case EMPTY:
+      any_empty = true;
+      rows_all[ex][row] = false;
+      cols_all[ex][col] = false;
+      rows_all[oh][row] = false;
+      cols_all[oh][col] = false;
+      break;
+    case OH:
+      rows_all[ex][row] = false;
+      cols_all[ex][col] = false;
+      break;
+    case EX:
+      rows_all[oh][row] = false;
+      cols_all[oh][col] = false;
+      break;
+    };
+
+    /* Check diagonals. */
+    if (in_a1_diag) {
+      switch (board[i]) {
+      case EMPTY:
+	any_empty = true;
+	diags_all[ex][a1_diag] = false;
+	diags_all[oh][a1_diag] = false;
+	break;
+      case OH:
+	diags_all[ex][a1_diag] = false;
+      case EX:
+	diags_all[oh][a1_diag] = false;
+	break;
+      };
+    }
+    if (in_anti_diag) {
+      switch (board[i]) {
+      case EMPTY:
+	any_empty = true;
+	diags_all[ex][anti_diag] = false;
+	diags_all[oh][anti_diag] = false;
+	break;
+      case OH:
+	diags_all[ex][anti_diag] = false;
+      case EX:
+	diags_all[oh][anti_diag] = false;
+	break;
+      };
+    }
+  }
+
+  /* Check to see which condition holds. */
+  bool is_win = false;
+
+  /* rows and cols */
+  for (int i = 0; i < N_ROWS; ++i) {
+    is_win =
+      rows_all[oh][i] ||
+      cols_all[oh][i] ||
+      rows_all[ex][i] ||
+      cols_all[ex][i];
+    if (is_win) break;
+  }
+
+  is_win = is_win ||
+    diags_all[oh][a1_diag] ||
+    diags_all[oh][anti_diag] ||
+    diags_all[ex][a1_diag] ||
+    diags_all[ex][a1_diag];
+
+  if (is_win) {
+    printf("DEBUG: is_win [true]\n");
+    return WIN;
+  } else if (!any_empty) {
+    printf("DEBUG: is_win [false]\n");
+    return TIE;
+  }
+
+  printf("DEBUG: PLAYING\n");
+  return PLAYING;
+}
+
+
+void print_winning_player_message(player active_player) {
+  static char win_message[] =
+    "\nPlayer %s won! Congratulations!\n";
+  
+  switch (active_player) {
+  case PLAYER_OH:
+    printf(win_message, "O");
+    break;
+  case PLAYER_EX:
+    printf(win_message, "X");
+    break;
+  };
 }
 
 
