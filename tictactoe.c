@@ -25,13 +25,13 @@ typedef enum board_mark board_mark;
 static char BOARD_SYMBOLS[] = {' ', 'O', 'X'};
 
 typedef enum action_type {INVALID, COMMAND_QUIT, MOVE} action_type;
-typedef struct action_map {
+typedef struct Action {
   action_type type;
   char label[ACTION_SIZE];
   int index;
-} action_map;
+} Action;
 
-static const action_map ACTIONS[] = {
+static const Action ACTIONS[] = {
   {COMMAND_QUIT, "q\0", -1},	      /* Indexes don't matter for commands. */
   {MOVE, "a1", 0},
   {MOVE, "a2", 1},
@@ -46,10 +46,22 @@ static const action_map ACTIONS[] = {
 };
 
 
-typedef enum player {PLAYER_EX, PLAYER_OH} player;
+typedef enum Player {PLAYER_EX, PLAYER_OH} Player;
 
 
-typedef enum game_status {PLAYING, TIE, WIN} game_status;
+typedef enum GameStatus {PLAYING, TIE, WIN} GameStatus;
+
+
+typedef struct ActionLogElem {
+  Action action;
+  Action* next_action;
+} ActionLogElem;
+
+typedef struct ActionLog {
+  Player starting_player;
+  GameStatus result;
+  ActionLogElem* action_list;
+} ActionLog;
 
 
 /**************************************************************** 
@@ -59,14 +71,14 @@ typedef enum game_status {PLAYING, TIE, WIN} game_status;
 void run_game();
 void print_board(board_mark board[BOARD_SIZE]);
 void print_board_row(board_mark board[BOARD_SIZE], int row);
-void apply_action(board_mark board[BOARD_SIZE], action_map action, player active_player);
-game_status check_game_status(board_mark board[BOARD_SIZE]);
-void print_winning_player_message(player active_player);
-board_mark mark_from_player(player p);
-player change_players(player old_player);
-action_map get_action();
-action_map action_from_str(const char action_str[]);
-bool is_valid_action(board_mark board[BOARD_SIZE], action_map action, char reason[]);
+void apply_action(board_mark board[BOARD_SIZE], Action action, Player active_player);
+GameStatus check_game_status(board_mark board[BOARD_SIZE]);
+void print_winning_player_message(Player active_player);
+board_mark mark_from_player(Player p);
+Player change_players(Player old_player);
+Action get_action();
+Action action_from_str(const char action_str[]);
+bool is_valid_action(board_mark board[BOARD_SIZE], Action action, char reason[]);
 void get_user_line(char response[], int response_size);
 
 
@@ -83,16 +95,16 @@ int main(int argc, char** argv) {
 void run_game() {
   static board_mark board[BOARD_SIZE] = {EMPTY};
   static char reason[256];
-  static game_status status = PLAYING;
+  static GameStatus status = PLAYING;
 
   printf(WELCOME_MESSAGE);
-  player active_player = PLAYER_OH;
+  Player active_player = PLAYER_OH;
 
   while(1) {
     print_board(board);
   
     printf(ACTION_PROMPT);
-    action_map action = get_action();
+    Action action = get_action();
     printf("DEBUG: Your action is [%s]\n", action.label);
 
     if (action.type == COMMAND_QUIT) break;
@@ -157,9 +169,9 @@ void print_board_row(board_mark board[BOARD_SIZE], int row) {
 }
 
 
-action_map get_action() {
+Action get_action() {
   char action_str[ACTION_SIZE];
-  action_map action;
+  Action action;
   
   /* Ask for input until a valid action is found. */
   while(1) {
@@ -178,13 +190,13 @@ action_map get_action() {
 }
 
 
-void apply_action(board_mark board[BOARD_SIZE], action_map action, player active_player) {
+void apply_action(board_mark board[BOARD_SIZE], Action action, Player active_player) {
   board_mark mark = mark_from_player(active_player);
   board[action.index] = mark;
 }
 
 
-game_status check_game_status(board_mark board[BOARD_SIZE]) {
+GameStatus check_game_status(board_mark board[BOARD_SIZE]) {
   static int oh = 0;
   static int ex = 1;
   static int a1_diag = 0;
@@ -292,7 +304,7 @@ game_status check_game_status(board_mark board[BOARD_SIZE]) {
 }
 
 
-void print_winning_player_message(player active_player) {
+void print_winning_player_message(Player active_player) {
   static char win_message[] =
     "\nPlayer %s won! Congratulations!\n";
   
@@ -307,7 +319,7 @@ void print_winning_player_message(player active_player) {
 }
 
 
-board_mark mark_from_player(player p) {
+board_mark mark_from_player(Player p) {
   board_mark mark;
 
   switch (p) {
@@ -323,8 +335,8 @@ board_mark mark_from_player(player p) {
 }
 
 
-player change_players(player old_player) {
-  player new_player;
+Player change_players(Player old_player) {
+  Player new_player;
 
   switch (old_player) {
   case PLAYER_OH:
@@ -355,9 +367,9 @@ void get_user_line(char response[], int response_size) {
 }
 
 
-action_map action_from_str(const char action_str[]) {
+Action action_from_str(const char action_str[]) {
   bool valid_action = false;
-  const action_map* action;
+  const Action* action;
   for (action = ACTIONS; action->type != INVALID; ++action) {
     /* printf("DEBUG: action_str [%s], action->label [%s], cmp [%d]\n", */
     /* 	   action_str, */
@@ -372,7 +384,7 @@ action_map action_from_str(const char action_str[]) {
 }
 
 
-bool is_valid_action(board_mark board[BOARD_SIZE], action_map action, char reason[]) {
+bool is_valid_action(board_mark board[BOARD_SIZE], Action action, char reason[]) {
   static char reason_already_marked[] =
     "Square %s already has a mark. Please try again.\n";
   
