@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
@@ -64,6 +65,14 @@ typedef struct ActionLog {
   ActionLogElem* end_action_list;
 } ActionLog;
 
+ActionLogElem* create_action_log_elem(Action action);
+ActionLog create_action_log(Player starting_player);
+void free_action_log(ActionLog action_log);
+void free_action_list(ActionLogElem* action_list);
+void append_action_log(ActionLog* action_log, Action action);
+ActionLogElem* create_action_log_elem(Action action);
+
+
 /* ActionLog related declarations. */
 ActionLog create_action_log(Player starting_player) {
   ActionLog action_log;
@@ -91,12 +100,12 @@ void free_action_list(ActionLogElem* action_list) {
 
 void append_action_log(ActionLog* action_log, Action action) {
   ActionLogElem* new_action_log_elem = create_action_log_elem(action);
-  if (action_log.action_list) {
-    action_log.end_action_list->next_action_log_elem = new_action_log_elem;
-    action_log.end_action_list = new_action_log_elem
+  if (action_log->action_list) {
+    action_log->end_action_list->next_action_log_elem = new_action_log_elem;
+    action_log->end_action_list = new_action_log_elem
   } else {
-    action_log.action_list = new_action_log_elem;
-    action_log.end_action_list = new_action_log_elem;
+    action_log->action_list = new_action_log_elem;
+    action_log->end_action_list = new_action_log_elem;
   }
 }
 
