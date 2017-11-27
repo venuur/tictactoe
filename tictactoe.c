@@ -54,14 +54,59 @@ typedef enum GameStatus {PLAYING, TIE, WIN} GameStatus;
 
 typedef struct ActionLogElem {
   Action action;
-  Action* next_action;
+  ActionLogElem* next_action_log_elem;
 } ActionLogElem;
 
 typedef struct ActionLog {
   Player starting_player;
   GameStatus result;
   ActionLogElem* action_list;
+  ActionLogElem* end_action_list;
 } ActionLog;
+
+/* ActionLog related declarations. */
+ActionLog create_action_log(Player starting_player) {
+  ActionLog action_log;
+  action_log.starting_player = starting_player;
+  action_log.result = PLAYING;
+  action_log.action_list = 0;
+  action_log.end_action_list = 0;
+  return action_log;
+}
+
+void free_action_log(ActionLog action_log) {
+  free_action_list(action_log.action_list);
+  action_log.end_action_list = 0;
+}
+
+void free_action_list(ActionLogElem* action_list) {
+  ActionLogElem* tmp;
+
+  while (action_list) {
+    tmp = action_list;
+    action_list = action_list->next_action_log_elem;
+    free(tmp);
+  }
+}
+
+void append_action_log(ActionLog* action_log, Action action) {
+  ActionLogElem* new_action_log_elem = create_action_log_elem(action);
+  if (action_log.action_list) {
+    action_log.end_action_list->next_action_log_elem = new_action_log_elem;
+    action_log.end_action_list = new_action_log_elem
+  } else {
+    action_log.action_list = new_action_log_elem;
+    action_log.end_action_list = new_action_log_elem;
+  }
+}
+
+
+ActionLogElem* create_action_log_elem(Action action) {
+  ActionLogElem* new_elem = malloc(sizeof(ActionLogElem));
+  new_elem->action = action;
+  new_elem->next_action_log_elem = 0;
+  return new_elem;
+}
 
 
 /**************************************************************** 
@@ -80,6 +125,7 @@ Action get_action();
 Action action_from_str(const char action_str[]);
 bool is_valid_action(board_mark board[BOARD_SIZE], Action action, char reason[]);
 void get_user_line(char response[], int response_size);
+
 
 
 /**************************************************************** 
