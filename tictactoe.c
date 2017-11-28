@@ -10,6 +10,7 @@
 #define N_ACTIONS BOARD_SIZE + 1 /* All moves and user commands. */
 #define LINE_BUFFER_SIZE 80
 #define INVALID_ACTION {INVALID, "", 0}
+#define PLAYER_STR_SIZE 2
 
 static char WELCOME_MESSAGE[] =
   "Welcome to Tic-Tac-Toe!\n\n"
@@ -128,13 +129,14 @@ void print_board_row(board_mark board[BOARD_SIZE], int row);
 void apply_action(board_mark board[BOARD_SIZE], Action action, Player active_player);
 GameStatus check_game_status(board_mark board[BOARD_SIZE]);
 void print_winning_player_message(Player active_player);
+void player_to_str(Player p, char* player_str);
 board_mark mark_from_player(Player p);
 Player change_players(Player old_player);
 Action get_action();
 Action action_from_str(const char action_str[]);
 bool is_valid_action(board_mark board[BOARD_SIZE], Action action, char reason[]);
 void get_user_line(char response[], int response_size);
-
+void print_action_log(const ActionLog* log);
 
 
 /**************************************************************** 
@@ -154,6 +156,7 @@ void run_game() {
 
   printf(WELCOME_MESSAGE);
   Player active_player = PLAYER_OH;
+  ActionLog log = create_action_log(active_player);
 
   while(1) {
     print_board(board);
@@ -168,6 +171,7 @@ void run_game() {
 
     if (valid_action) {
       apply_action(board, action, active_player);
+      append_action_log(&log, action);
       status = check_game_status(board);
 
       if (status == PLAYING) {
@@ -195,7 +199,12 @@ void run_game() {
   case WIN:
     print_winning_player_message(active_player);
     break;
-  };    
+  };
+
+  printf("\nHere is the log from your game:\n");
+  print_action_log(&log);
+
+  free_action_log(log);
 }
 
 
@@ -298,6 +307,7 @@ GameStatus check_game_status(board_mark board[BOARD_SIZE]) {
 
     /* Check diagonals. */
     if (in_a1_diag) {
+      printf("DEBUG: in_a1_diag [%d], board[%d] [%d]\n", in_a1_diag, i, board[i]);
       switch (board[i]) {
       case EMPTY:
 	any_empty = true;
@@ -306,6 +316,7 @@ GameStatus check_game_status(board_mark board[BOARD_SIZE]) {
 	break;
       case OH:
 	diags_all[ex][a1_diag] = false;
+	break;
       case EX:
 	diags_all[oh][a1_diag] = false;
 	break;
@@ -320,6 +331,7 @@ GameStatus check_game_status(board_mark board[BOARD_SIZE]) {
 	break;
       case OH:
 	diags_all[ex][anti_diag] = false;
+	break;
       case EX:
 	diags_all[oh][anti_diag] = false;
 	break;
@@ -344,7 +356,7 @@ GameStatus check_game_status(board_mark board[BOARD_SIZE]) {
     diags_all[oh][a1_diag] ||
     diags_all[oh][anti_diag] ||
     diags_all[ex][a1_diag] ||
-    diags_all[ex][a1_diag];
+    diags_all[ex][anti_diag];
 
   if (is_win) {
     printf("DEBUG: is_win [true]\n");
@@ -362,13 +374,19 @@ GameStatus check_game_status(board_mark board[BOARD_SIZE]) {
 void print_winning_player_message(Player active_player) {
   static char win_message[] =
     "\nPlayer %s won! Congratulations!\n";
-  
-  switch (active_player) {
+  static char player_str[2];
+
+  player_to_str(active_player, player_str);
+  printf(win_message, player_str);
+}
+
+void player_to_str(Player p, char* player_str) {
+  switch (p) {
   case PLAYER_OH:
-    printf(win_message, "O");
+    strcpy(player_str, "O");
     break;
   case PLAYER_EX:
-    printf(win_message, "X");
+    strcpy(player_str, "X");
     break;
   };
 }
@@ -450,4 +468,18 @@ bool is_valid_action(board_mark board[BOARD_SIZE], Action action, char reason[])
   }
 
   return true;
+}
+
+
+void print_action_log(const ActionLog* log) {
+  ActionLogElem* action_list;
+  char player_str[PLAYER_STR_SIZE];
+
+  player_to_str(log->starting_player, player_str);
+  printf("%s ", player_str);
+  
+  for(action_list = log->action_list; action_list; action_list = action_list->next_action_log_elem) {
+    printf("%s", action_list->action.label);
+    printf("%s", action_list->next_action_log_elem ? " " : "\n");
+  }
 }
