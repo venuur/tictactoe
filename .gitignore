@@ -56,3 +56,6 @@ dkms.conf
 
 # Stack trace from seg fault.
 *.stackdump
+
+# Build results.
+bin/

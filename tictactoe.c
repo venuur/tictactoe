@@ -55,7 +55,7 @@ typedef enum GameStatus {PLAYING, TIE, WIN} GameStatus;
 
 typedef struct ActionLogElem {
   Action action;
-  ActionLogElem* next_action_log_elem;
+  struct ActionLogElem* next_action_log_elem;
 } ActionLogElem;
 
 typedef struct ActionLog {
@@ -102,7 +102,7 @@ void append_action_log(ActionLog* action_log, Action action) {
   ActionLogElem* new_action_log_elem = create_action_log_elem(action);
   if (action_log->action_list) {
     action_log->end_action_list->next_action_log_elem = new_action_log_elem;
-    action_log->end_action_list = new_action_log_elem
+    action_log->end_action_list = new_action_log_elem;
   } else {
     action_log->action_list = new_action_log_elem;
     action_log->end_action_list = new_action_log_elem;
