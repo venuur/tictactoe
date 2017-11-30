@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <time.h>
 
 #define N_COLS 3
 #define N_ROWS N_COLS
@@ -124,6 +125,9 @@ ActionLogElem* create_action_log_elem(Action action) {
  ****************************************************************/
   
 void run_game();
+void get_user_action(board_mark board[BOARD_SIZE],
+		     Action* selected_action_out,
+		     bool* playing_out);
 void print_board(board_mark board[BOARD_SIZE]);
 void print_board_row(board_mark board[BOARD_SIZE], int row);
 void apply_action(board_mark board[BOARD_SIZE], Action action, Player active_player);
@@ -144,28 +148,34 @@ void print_action_log(const ActionLog* log);
  ****************************************************************/
 
 int main(int argc, char** argv) {
-  run_game();
+  printf(WELCOME_MESSAGE);
+  run_game(PLAYER_OH, get_user_action, get_user_action);
   return 0;
 }
 
 
-void run_game() {
+void run_game(Player starting_player,
+	      void (*player_ex_get_action)(board_mark*, Action*, bool*),
+	      void (*player_oh_get_action)(board_mark*, Action*, bool*)) {
   static board_mark board[BOARD_SIZE] = {EMPTY};
   static char reason[256];
   static GameStatus status = PLAYING;
 
-  printf(WELCOME_MESSAGE);
-  Player active_player = PLAYER_OH;
+  Player active_player = starting_player;
   ActionLog log = create_action_log(active_player);
 
-  while(1) {
-    print_board(board);
-  
-    printf(ACTION_PROMPT);
-    Action action = get_action();
-    printf("DEBUG: Your action is [%s]\n", action.label);
+  bool playing = true;
+  while(playing) {
+    Action action;
 
-    if (action.type == COMMAND_QUIT) break;
+    switch(active_player) {
+    case PLAYER_OH:
+      (*player_oh_get_action)(board, &action, &playing);
+      break;
+    case PLAYER_EX:
+      (*player_ex_get_action)(board, &action, &playing);
+      break;
+    };
 
     bool valid_action = is_valid_action(board, action, reason);
 
@@ -178,7 +188,7 @@ void run_game() {
 	active_player = change_players(active_player);
       } else {
 	/* If not playing then end game. */
-	break;
+	playing = !playing;
       }
     } else {
       printf(reason);
@@ -205,6 +215,20 @@ void run_game() {
   print_action_log(&log);
 
   free_action_log(log);
+}
+
+
+void get_user_action(board_mark board[BOARD_SIZE],
+		     Action* selected_action_out,
+		     bool* playing_out) {
+  print_board(board);
+  
+  printf(ACTION_PROMPT);
+  *selected_action_out = get_action();
+  printf("DEBUG: Your action is [%s]\n", selected_action_out->label);
+
+  if (selected_action_out->type == COMMAND_QUIT)
+    *playing_out = !*playing_out;
 }
 
 
