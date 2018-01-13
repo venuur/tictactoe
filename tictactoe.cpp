@@ -6,6 +6,7 @@
 
 using std::ostream;
 using std::vector;
+using std::array;
 using std::cout;
 using std::endl;
 using std::default_random_engine;
@@ -52,6 +53,10 @@ public:
 		return status == TIE;
 	}
 	
+	bool is_playing() const {
+		return status == PLAYING;
+	}
+	
 	// Valid return only if Board::is_won returns true.
 	int winning_player() const {
 		return status;
@@ -62,12 +67,12 @@ public:
 		update_status();
 	}
 	
-	vector<Move> valid_moves(int player) {
+	vector<Move> valid_moves(int player) const {
 		vector<Move> moves;
 		
-		for (auto b : board) {
-			if (b == EMPTY) {
-				moves.push_back(Move(b, player));
+		for (int i = 0; i < 9; i++) {
+			if (board[i] == EMPTY) {
+				moves.push_back(Move(i, player));
 			} 
 		}
 		
@@ -84,31 +89,57 @@ private:
 
 class Player {
 	public:
-		int player;
-	
 		virtual ~Player() {};	
-		virtual Move next_move(Board) = 0;
-}
+		virtual Move next_move(const Board&) = 0;
+};
 
-class RandomPlayer : Player {
+class RandomPlayer : public Player {
 public:
-	RandomPlayer(int p) : player(p) {}
+	int player;
+	
+	RandomPlayer(int p) : 
+			player(p),
+			seed() {}
+	RandomPlayer(int p, int s) : 
+			player(p),
+			seed(s) {}
 
-	virtual Move next_move(Board b) {
+	virtual Move next_move(const Board& b) {
 		vector<Move> moves = b.valid_moves(player);
-		uniform_int_distribution<int> idx_dist(0, size(moves));
+		cout << "Valid Moves: ";
+		for (Move m : moves) {
+			cout << m << " ";
+		}
+		cout << endl;
+		uniform_int_distribution<int> idx_dist(0, size(moves) - 1);
 		int random_index = idx_dist(generator);
 		return moves[random_index];
 	}
 	
 private:
+	int seed;
 	default_random_engine generator;
-}
+};
+
+class Tictactoe {
+public:
+	Tictactoe(Player* p1, Player* p2) : 
+			players({p1, p2}) {}
+			
+	void play();
+	friend ostream& operator<<(ostream& os, const Tictactoe& game);
+	
+private:
+	Board board;
+	array<Player*, 2> players;
+	vector<Move> action_log;
+};
 
 
 void test_board_status();
 void test_board_moves();
 void test_random_moves();
+void test_random_game();
 
 
 int main(int argc, char** argv) {
@@ -117,6 +148,7 @@ int main(int argc, char** argv) {
 	test_board_status();
 	test_board_moves();
 	test_random_moves();
+	test_random_game();
 	
 	return 0;
 }
@@ -179,8 +211,43 @@ void test_random_moves() {
 	
 	cout << b;
 	for (int i = 0; i < 4; i++) {
-		Move m = 
+		Move m = p1.next_move(b);
+		cout << m << endl;
+		b.apply_move(m);
+		cout << b;
+		m = p2.next_move(b);
+		cout << m << endl;
+		b.apply_move(m);
+		cout << b;
 	}
+}
+
+void test_random_game() {
+	RandomPlayer p1(1), p2(2);
+	Tictactoe(&p1, &p2).play();
+}
+
+
+void Tictactoe::play() {
+	int player_idx = 0;
+	do {
+		Player* current_player = players[player_idx];
+		Move m = current_player->next_move(board);
+		board.apply_move(m);
+		action_log.push_back(m);
+		cout << *this;
+		player_idx = (player_idx + 1) % 2;
+	} while (board.is_playing());
+}
+
+
+ostream& operator<<(ostream& os, const Tictactoe& game) {
+	cout << game.board;
+	cout << "Moves: ";
+	for (Move m : game.action_log) {
+		cout << m << " ";
+	}
+	cout << endl;
 }
 
 
