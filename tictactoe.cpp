@@ -12,10 +12,12 @@ using std::endl;
 using std::default_random_engine;
 using std::uniform_int_distribution;
 using std::size;
+using std::random_device;
 
 static const int TIE = 0;
 static const int PLAYING = -1;
 static const int EMPTY = 0;
+static random_device global_rng;
 
 
 class Move {
@@ -98,11 +100,17 @@ public:
 	int player;
 	
 	RandomPlayer(int p) : 
+			player(p) {
+		unsigned int random_seed = global_rng();
+		cout << "Using random seed: " << random_seed << endl;
+		seed = random_seed;
+		generator.seed(seed);
+	}
+		
+	RandomPlayer(int p, unsigned int s) : 
 			player(p),
-			seed() {}
-	RandomPlayer(int p, int s) : 
-			player(p),
-			seed(s) {}
+			seed(s),
+			generator(seed) {}
 
 	virtual Move next_move(const Board& b) {
 		vector<Move> moves = b.valid_moves(player);
@@ -117,7 +125,7 @@ public:
 	}
 	
 private:
-	int seed;
+	unsigned int seed;
 	default_random_engine generator;
 };
 
