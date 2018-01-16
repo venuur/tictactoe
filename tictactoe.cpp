@@ -3,21 +3,45 @@
 #include <array>
 #include <random>
 #include <iterator>
+#include <string>
+#include <chrono>
+#include <sstream>
+#include <memory>
+#include <unordered_set>
+#include <utility>
 
 using std::ostream;
 using std::vector;
 using std::array;
 using std::cout;
+using std::cerr;
 using std::endl;
 using std::default_random_engine;
 using std::uniform_int_distribution;
 using std::size;
 using std::random_device;
+using std::string;
+using std::chrono::system_clock;
+using std::stringstream;
+using std::unique_ptr;
+using std::unordered_set;
+using std::move;
 
 static const int TIE = 0;
 static const int PLAYING = -1;
 static const int EMPTY = 0;
 static random_device global_rng;
+
+
+// Manipulation for player values of 1 and 2.
+int other_player(int p) {
+	return (p % 2) + 1;
+}
+
+// Manipulation for indexes 0 and 1 corresponding to player 1 and 2.
+int other_player_index(int p) {
+	return (p + 1) % 2;
+}
 
 
 class Move {
@@ -91,17 +115,18 @@ private:
 
 class Player {
 	public:
-		virtual ~Player() {};	
+		virtual ~Player() {};
 		virtual Move next_move(const Board&) = 0;
 };
 
 class RandomPlayer : public Player {
 public:
-	int player;
-	
 	RandomPlayer(int p) : 
 			player(p) {
-		unsigned int random_seed = global_rng();
+		// Use random device to create random sequence for seeds.
+		// Use system clock to get different sequence each time.
+		unsigned int random_seed = 
+			global_rng() + system_clock::now().time_since_epoch().count();
 		cout << "Using random seed: " << random_seed << endl;
 		seed = random_seed;
 		generator.seed(seed);
@@ -125,13 +150,54 @@ public:
 	}
 	
 private:
+	int player;
 	unsigned int seed;
 	default_random_engine generator;
 };
 
+
+class OneStepAheadPlayer : public Player {
+public:
+	OneStepAheadPlayer(int p) :
+			player(p),
+			random_alternative(player) {}
+			
+	virtual Move next_move(const Board& b) {
+		vector<Move> moves = b.valid_moves(player);
+		
+		// Look for winning moves.
+		for (Move m : moves) {
+			Board next_board = b;
+			next_board.apply_move(m);
+			if (next_board.is_won()) {
+				return m;
+			}
+		}
+		
+		// Look for blocking moves.
+		int other = other_player(player);
+		for (Move m : moves) {
+			Board next_board = b;
+			next_board.apply_move(Move(m.position, other));
+			if (next_board.is_won()) {
+				return m;
+			}
+		}
+		
+		// Default to a random move.
+		return random_alternative.next_move(b);
+	}
+ 
+private:
+	int player;
+	RandomPlayer random_alternative;
+};
+
+
+
 class Tictactoe {
 public:
-	Tictactoe(Player* p1, Player* p2) : 
+	Tictactoe(Player* p1, Player* p2) :
 			players({p1, p2}) {}
 			
 	void play();
@@ -148,17 +214,127 @@ void test_board_status();
 void test_board_moves();
 void test_random_moves();
 void test_random_game();
+void test();
+void score_players( 
+		string player_one_name, 
+		string player_two_name,
+		int n_games);
+Player* find_player_by_name(string player_name, int player);
+
+
+class CLIHandler {
+public:
+	CLIHandler(int argc, char** argv) :
+			n_args(argc),
+			valid_player_names({"random", "one_step_ahead"}) {
+		for (int i = 1; i < n_args; i++) {
+			args.push_back(argv[i]);
+		}
+	}
+	
+	void run_command() {
+		if (n_args < 2) {
+			print_usage();
+		} else if (args[0] == "test") {
+			test();
+		} else if (args[0] == "random") {
+			test_random_game();
+		} else if (args[0] == "score") {
+			run_score();
+		} else {
+			print_usage();
+		}
+	}
+	
+	void run_score() {
+		if (n_args < 5) {
+			print_usage_score();
+		} else {
+			stringstream ss;
+			int n_games;
+			string player_one_name, player_two_name;
+			ss << args[1];
+			ss >> n_games;
+			ss.str("");
+			ss.clear();
+			
+			ss << args[2];
+			ss >> player_one_name;
+			if (valid_player_names.count(player_one_name) == 0) {
+				cerr << "Player one name, "
+				     << player_one_name
+					 << ", not found." << endl;
+				print_usage_score();
+				return;
+			}
+			ss.str("");
+			ss.clear();
+			
+			ss << args[3];
+			ss >> player_two_name;
+			if (valid_player_names.count(player_two_name) == 0) {
+				cerr << "Player two name, "
+				     << player_two_name
+					 << ", not found." << endl;
+				print_usage_score();
+				return;
+			}
+			ss.str("");
+			ss.clear();
+			
+			score_players(player_one_name, player_two_name, n_games);
+		}
+	}
+	
+	void print_usage();
+	void print_usage_score();
+	
+private:
+	int n_args;
+	vector<string> args;
+	unordered_set<string> valid_player_names;
+};
 
 
 int main(int argc, char** argv) {
 	cout << "Tictactoe Engine" << endl;
 	
+	CLIHandler cli(argc, argv);
+	
+	cli.run_command();
+	
+	return 0;
+}
+
+
+void test() {
 	test_board_status();
 	test_board_moves();
 	test_random_moves();
 	test_random_game();
-	
-	return 0;
+}
+
+void score_players( 
+		string player_one_name, 
+		string player_two_name,
+		int n_games=100) {
+	unique_ptr<Player> player_one(find_player_by_name(
+			player_one_name, 1));
+	unique_ptr<Player> player_two(find_player_by_name(
+			player_two_name, 2));
+			
+	Tictactoe(player_one.get(), player_two.get()).play();
+}
+
+
+Player* find_player_by_name(string player_name, int player) {
+	if (player_name == "random") {
+		return new RandomPlayer(player);
+	} else if (player_name == "one_step_ahead") {
+		return new OneStepAheadPlayer(player);
+	} else {
+		return 0; // If valid player not found.
+	}
 }
 
 
@@ -236,11 +412,33 @@ void test_random_game() {
 }
 
 
+void CLIHandler::print_usage() {
+	cout << "\nUsage: ./tictactoe.exe COMMAND COMMAND_ARGS\n\n"
+	     << "COMMAND       One of the following:\n"
+		 << "  test        Runs a series of tests of game engine features.\n"
+		 << "  random      Plays game between to players randomly choosing moves.\n"
+		 << "  score       Plays a game n times between two players and returns score by wins, losses, and ties by player one.\n\n"
+		 << "COMMAND_ARGS  Arguments to each command.\n"
+		 << "  test        None.\n"
+		 << "  random      None.\n"
+		 << "  score       n_games, player_one_name, player_two_name.\n\n"
+		 << endl;
+}
+
+void CLIHandler::print_usage_score() {
+	cout << "\nUsage: ./tictactoe.exe score n_games player_one_name player_two_name\n\n"
+	     << "  n_games          Number of games to play.\n"
+		 << "  player_one_name  Name of player one, one of random, one_step_ahead.  This determines the players move choices.\n"
+		 << "  player_two_name  Name of player two, see player_one_name.\n\n"
+		 << endl;
+}
+
+
 void Tictactoe::play() {
 	int player_idx = 0;
 	do {
-		Player* current_player = players[player_idx];
-		Move m = current_player->next_move(board);
+		Player& current_player = *players[player_idx];
+		Move m = current_player.next_move(board);
 		board.apply_move(m);
 		action_log.push_back(m);
 		cout << *this;
