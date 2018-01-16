@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <utility>
 #include <iomanip>
+#include <unordered_map>
 
 using std::ostream;
 using std::vector;
@@ -26,6 +27,7 @@ using std::chrono::system_clock;
 using std::stringstream;
 using std::unique_ptr;
 using std::unordered_set;
+using std::unordered_map;
 
 static const int TIE = 0;
 static const int PLAYING = -1;
@@ -61,12 +63,19 @@ class Board {
 public:	
 	Board() : 
 			board(9, 0),
-			status(PLAYING) {}
+			status(PLAYING),
+			m_next_player(1) {}
 		
 	Board(const vector<int>& b) : 
-			status(PLAYING) {
+			status(PLAYING),
+			m_next_player(1){
 		board = b;
 		update_status();
+		for (int pos : b) {
+			if (pos > 0) {
+				m_next_player = other_player(m_next_player);
+			}
+		}
 	}
 		
 	friend ostream& operator<<(ostream& os, const Board& b);
@@ -91,6 +100,7 @@ public:
 	void apply_move(Move m) {
 		board[m.position] = m.player;
 		update_status();
+		m_next_player = other_player(m_next_player);
 	}
 	
 	vector<Move> valid_moves(int player) const {
@@ -104,10 +114,19 @@ public:
 		
 		return moves;
 	}
+	
+	int next_player() {
+		return m_next_player;
+	}
+	
+	int next_player_idx() {
+		return m_next_player - 1;
+	}
 
 private:
 	vector<int> board;
 	int status;
+	int m_next_player;
 	
 	void update_status();
 };
@@ -118,6 +137,30 @@ class Player {
 		virtual ~Player() {};
 		virtual Move next_move(const Board&) = 0;
 };
+
+
+class Tictactoe {
+public:
+	vector<Move> action_log;
+	Board board;
+	
+	Tictactoe(Player* p1, Player* p2) :
+			players({p1, p2}),
+			next_player_idx(0) {}
+			
+	Tictactoe(Player* p1, Player* p2, Board initial) :
+			board(initial), 
+			players({p1, p2}),
+			next_player_idx(board.next_player_idx()) {}
+			
+	void play();
+	friend ostream& operator<<(ostream& os, const Tictactoe& game);
+	
+private:
+	array<Player*, 2> players;
+	int next_player_idx;
+};
+
 
 class RandomPlayer : public Player {
 public:
@@ -188,21 +231,79 @@ private:
 };
 
 
-
-class Tictactoe {
+class OneStepAheadMCSTPlayer : public Player {
 public:
-	vector<Move> action_log;
-	Board board;
-	
-	Tictactoe(Player* p1, Player* p2) :
-			players({p1, p2}) {}
+	OneStepAheadMCSTPlayer(
+			int p, 
+			int n = 100, 
+			double win  = 1.0, 
+			double tie  = 0.5,
+			double loss = 0.0) : 
+			player(p),
+			n_samples(n),
+			win_score(win),
+			tie_score(tie),
+			loss_score(loss),
+			self(player),
+			opponent(player) {}
 			
-	void play();
-	friend ostream& operator<<(ostream& os, const Tictactoe& game);
+	virtual Move next_move(const Board& b) {
+		// Set initial move scores to zero.
+		vector<Move> moves = b.valid_moves(player);
+		unordered_map<int, double> move_scores;
+		for (Move m : moves) {
+			move_scores.insert({m.position, 0.0});
+		}
+		
+		// Simulate games forward and accumulate scores.
+		for (int i = 0; i < n_samples; i++) {
+			Move next_move = self.next_move(b);
+			Board next_board = b;
+			next_board.apply_move(next_move);
+			
+			Tictactoe continuation(&self, &opponent, next_board);
+			continuation.play();
+			
+			if (continuation.board.is_won()) {
+				if (continuation.board.winning_player() == player) {
+					move_scores[next_move.position] += win_score;
+				} else {
+					move_scores[next_move.position] += loss_score;
+				} 
+			} else {
+				move_scores[next_move.position] += tie_score;
+			}
+		}
+		
+		// Pick highest scoring move.
+		int max_position = moves[0].position;
+		double max_score = move_scores[max_position];
+		for (auto move_score : move_scores) {
+			cout << "Move " << move_score.first
+			     << " Score " << move_score.second
+				 << endl;
+			if (max_score < move_score.second) {
+				max_position = move_score.first;
+				max_score = move_score.second;
+			}
+		}
+		
+		Move selected_move = Move(max_position, player);
+		cout << "Selected " << selected_move << endl;
+		
+		return selected_move;
+	}
 	
 private:
-	array<Player*, 2> players;
+	int player;
+	int n_samples;
+	double win_score;
+	double tie_score;
+	double loss_score;
+	OneStepAheadPlayer self;
+	OneStepAheadPlayer opponent;
 };
+
 
 
 void test_board_status();
@@ -222,7 +323,10 @@ class CLIHandler {
 public:
 	CLIHandler(int argc, char** argv) :
 			n_args(argc),
-			valid_player_names({"random", "one_step_ahead"}) {
+			valid_player_names({
+				"random", 
+				"one_step_ahead",
+				"one_step_ahead_mcst"}) {
 		for (int i = 1; i < n_args; i++) {
 			args.push_back(argv[i]);
 		}
@@ -374,6 +478,8 @@ Player* find_player_by_name(string player_name, int player) {
 		return new RandomPlayer(player);
 	} else if (player_name == "one_step_ahead") {
 		return new OneStepAheadPlayer(player);
+	} else if (player_name == "one_step_ahead_mcst") {
+		return new OneStepAheadMCSTPlayer(player, 10000);
 	} else {
 		return 0; // If valid player not found.
 	}
@@ -477,14 +583,19 @@ void CLIHandler::print_usage_score() {
 
 
 void Tictactoe::play() {
-	int player_idx = 0;
-	do {
-		Player& current_player = *players[player_idx];
-		Move m = current_player.next_move(board);
+	// If game has already been played. Do nothing.
+	if (!board.is_playing()) {
+		return;
+	}
+	
+	for (; 
+			board.is_playing(); 
+			next_player_idx = other_player_index(next_player_idx)) {
+		Move m = players[next_player_idx]->next_move(board);
 		board.apply_move(m);
 		action_log.push_back(m);
-		player_idx = (player_idx + 1) % 2;
-	} while (board.is_playing());
+		//cout << *this << endl;
+	}
 }
 
 
