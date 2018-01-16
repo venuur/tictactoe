@@ -9,6 +9,7 @@
 #include <memory>
 #include <unordered_set>
 #include <utility>
+#include <iomanip>
 
 using std::ostream;
 using std::vector;
@@ -25,7 +26,6 @@ using std::chrono::system_clock;
 using std::stringstream;
 using std::unique_ptr;
 using std::unordered_set;
-using std::move;
 
 static const int TIE = 0;
 static const int PLAYING = -1;
@@ -127,7 +127,6 @@ public:
 		// Use system clock to get different sequence each time.
 		unsigned int random_seed = 
 			global_rng() + system_clock::now().time_since_epoch().count();
-		cout << "Using random seed: " << random_seed << endl;
 		seed = random_seed;
 		generator.seed(seed);
 	}
@@ -139,11 +138,6 @@ public:
 
 	virtual Move next_move(const Board& b) {
 		vector<Move> moves = b.valid_moves(player);
-		cout << "Valid Moves: ";
-		for (Move m : moves) {
-			cout << m << " ";
-		}
-		cout << endl;
 		uniform_int_distribution<int> idx_dist(0, size(moves) - 1);
 		int random_index = idx_dist(generator);
 		return moves[random_index];
@@ -197,6 +191,9 @@ private:
 
 class Tictactoe {
 public:
+	vector<Move> action_log;
+	Board board;
+	
 	Tictactoe(Player* p1, Player* p2) :
 			players({p1, p2}) {}
 			
@@ -204,9 +201,7 @@ public:
 	friend ostream& operator<<(ostream& os, const Tictactoe& game);
 	
 private:
-	Board board;
 	array<Player*, 2> players;
-	vector<Move> action_log;
 };
 
 
@@ -220,6 +215,7 @@ void score_players(
 		string player_two_name,
 		int n_games);
 Player* find_player_by_name(string player_name, int player);
+ostream& operator<<(ostream& os, const vector<Move>& moves);
 
 
 class CLIHandler {
@@ -318,12 +314,58 @@ void score_players(
 		string player_one_name, 
 		string player_two_name,
 		int n_games=100) {
-	unique_ptr<Player> player_one(find_player_by_name(
-			player_one_name, 1));
-	unique_ptr<Player> player_two(find_player_by_name(
-			player_two_name, 2));
-			
-	Tictactoe(player_one.get(), player_two.get()).play();
+	// Metrics from player_one's perspective.
+	int wins = 0;
+	int losses = 0;
+	int ties = 0;
+	
+	vector<vector<Move>> game_logs(n_games);
+	
+	for (int i = 0; i < n_games; i++) {
+		unique_ptr<Player> player_one(find_player_by_name(
+				player_one_name, 1));
+		unique_ptr<Player> player_two(find_player_by_name(
+				player_two_name, 2));
+				
+		Tictactoe game(player_one.get(), player_two.get());
+		game.play();
+		
+		game_logs[i] = game.action_log;
+		cout << game_logs[i] << " ";
+		
+		if (game.board.winning_player() == 1) {
+			wins++;
+			cout << "W";
+		} else if (game.board.winning_player() == 2) {
+			losses++;
+			cout << "L";
+		} else if (game.board.is_tie()) {
+			ties++;
+			cout << "T";
+		}
+		
+		cout << endl;
+	}
+	
+	double win_percent = static_cast<double>(wins) / n_games * 100;
+	double loss_percent = static_cast<double>(losses) / n_games * 100;
+	double tie_percent = static_cast<double>(ties) / n_games * 100;
+	double mean_moves = 0;
+	for (auto log : game_logs) {
+		mean_moves += size(log);
+	}
+	mean_moves /= n_games;
+	
+	
+	cout << "Wins (%) "
+	     << "Losses (%) "
+		 << "Ties (%) "
+		 << "Mean Moves\n"
+		 << std::setw(8) << win_percent  << " "
+		 << std::setw(10) << loss_percent << " "
+		 << std::setw(8) << tie_percent  << " "
+		 << std::setw(10) << mean_moves
+		 << endl;
 }
 
 
@@ -441,7 +483,6 @@ void Tictactoe::play() {
 		Move m = current_player.next_move(board);
 		board.apply_move(m);
 		action_log.push_back(m);
-		cout << *this;
 		player_idx = (player_idx + 1) % 2;
 	} while (board.is_playing());
 }
@@ -535,5 +576,13 @@ void Board::update_status() {
 
 ostream& operator<<(ostream& os, const Move& m) {
 	os << m.player << "@" << m.position;
+	return os;
+}
+
+ostream& operator<<(ostream& os, const vector<Move>& moves) {
+	for (int i = 0; i < size(moves)-1; i++) {
+		os << moves[i] << " ";
+	}
+	os << moves[size(moves)-1];
 	return os;
 }
